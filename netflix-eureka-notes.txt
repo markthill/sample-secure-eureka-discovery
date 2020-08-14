@@ -1,0 +1,75 @@
+----------------------------------------------------
+Running a dockerized instance
+----------------------------------------------------
+export INSTANCE_ID=ec2-54-236-6-238.compute-1.amazonaws.com
+export PORT=9001
+export PEER=peer-1
+docker run -e "SPRING_PROFILES_ACTIVE=$PEER" -e "EUREKA_INSTANCE_HOSTNAME=$INSTANCE_ID" -e "EUREKA_INSTANCE_INSTANCEID=$INSTANCE_ID" -e "EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=$DEFAULT_ZONE" -p $PORT:$PORT -t markthill/eureka-server
+
+
+----------------------------------------------------
+properties help
+----------------------------------------------------
+eureka.instance.hostname - this property changes where the link to the application goes in the dashboard
+
+
+----------------------------------------------------
+docker build eureka-server
+----------------------------------------------------
+docker build -t markthill/eureka-server .
+docker push markthill/eureka-server 
+
+
+----------------------------------------------------
+debugging eureka
+----------------------------------------------------
+postman get with Accept application/json
+
+http://eureka.us-east-1a.serversidesolutions.co:8761/eureka/apps/EUREKA-SERVER-CLUSTERED
+
+
+----------------------------------------------------
+starting eureka server with correct truststore
+----------------------------------------------------
+
+java -jar -Dspring.profiles.active=peer-3 -Djavax.net.ssl.trustStore=/Users/markthill/projects/java/sample-secure-eureka-discovery/secure-discovery/src/main/resources/truststore.jks target/secure-discovery-1.0-SNAPSHOT.jar
+
+
+----------------------------------------------------
+Peer communication problem
+----------------------------------------------------
+
+https://github.com/spring-cloud/spring-cloud-netflix/issues/3554
+
+
+----------------------------------------------------
+Keytool
+----------------------------------------------------
+
+keytool -list -v -keystore eureka.jks
+
+
+keytool -genkey -alias eureka-cert2 -keyalg RSA -keystore eureka2.jks -keyalg RSA -validity 9999 -dname "CN=sss1.com, O=SSS, L=Ashburn, S=Virginia, C=US, OU=Ashburn" -ext "san=dns:sss1.com,dns:sss2.com,dns:sss3.com"
+
+
+----------------------------------------------------
+Steps to create signed cert with CA
+----------------------------------------------------
+
+keytool -genkey -alias eureka-cert -keyalg RSA -keystore eureka.jks -keyalg RSA -validity 9999 -dname "CN=sss1.com, O=SSS, L=Ashburn, S=Virginia, C=US, OU=Ashburn" -ext "san=dns:sss1.com,dns:sss2.com,dns:sss3.com"
+keytool -list -v -keystore eureka.jks
+keytool -export -alias eureka-cert -file eureka-cert.cer -keystore eureka.jks
+keytool -printcert -v -file eureka-cert.cer
+keytool -certreq -alias eureka-cert -keystore eureka.jks -file eureka.csr
+mkdir ca
+cd ca
+set RANDFILE=rand
+openssl req -new -keyout cakey.pem -out careq.pem -config /System/Library/OpenSSL/openssl.cnf
+openssl x509 -signkey cakey.pem -req -days 3650 -in careq.pem -out caroot.cer -extensions v3_ca
+keytool -printcert -v -file caroot.cer
+echo 1234 > serial.txt
+openssl x509 -CA caroot.cer -CAkey cakey.pem -CAserial serial.txt -req -in ../eureka.csr -out ../eurekaSigned.cer -days 365
+cd ..
+keytool -import -alias SSSCA -file ca/caroot.cer -keystore eureka.jks
+keytool -import -alias eureka -file eurekaSigned.cer -keystore eureka.jks
+keytool -list -v -keystore eureka.jks
